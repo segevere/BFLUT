@@ -36,9 +36,7 @@ def check_load_factor_comparing_to_error_bits():
     return
 
 
-
-
-if __name__ == '__main__':
+def check_progressive_load():
     bl_lut_object = BfLutClass()
     bl_lut_object.do_error_detection = False
     res = dict()
@@ -84,3 +82,62 @@ if __name__ == '__main__':
     plt.xlabel('load')
     plt.ylabel('returned items')
     plt.show()
+
+
+
+if __name__ == '__main__':
+    bl_lut_object = BfLutClass()
+    bl_lut_object.do_error_detection = False
+    bl_lut_object.n_items_to_generate = 16
+
+    n_iterations = 1000
+    res = dict()
+
+    keys_found_rate:float = dict()
+
+    sum_num = 0
+    iterations = 0
+
+    for i in range(1, n_iterations):
+        bl_lut_object.init()
+        res[i] = bl_lut_object.run_test()
+        keys_found_rate[i] = res[i]["found in BF"]/bl_lut_object.n_items_to_generate
+        sum_num += res[i]["found in BF"]
+        iterations +=1
+
+    sum_num /= iterations
+
+    plt.plot(keys_found_rate.keys(), keys_found_rate.values())
+    plt.xlabel('iteration')
+    plt.ylabel('ratio')
+    plt.text(1, sum_num/bl_lut_object.n_items_to_generate, 'n words {}'.format(bl_lut_object.n_items_to_generate) + 'average {}'.format(sum_num))
+    plt.show()
+
+    load_factor = dict()
+    lf_sum:float = 0
+    iterations = 0
+    for i in range(1, n_iterations):
+        lf = res[i]["BF Load Factor "]
+        load_factor[i] = lf
+        lf_sum += lf
+        iterations += 1
+
+    lf_av:float = lf_sum/iterations
+
+    plt.plot(load_factor.keys(), load_factor.values())
+    plt.xlabel('iteration')
+    plt.ylabel('load_factor')
+    plt.text(1, lf_av , 'n words {}'.format(bl_lut_object.n_items_to_generate) + ' average {}'.format(lf_av))
+    plt.show()
+
+
+
+
+
+
+    plt.bar(load_factor.keys(),load_factor.values())
+    plt.xlabel('error bits')
+    plt.ylabel('load factor')
+    plt.show()
+
+

@@ -1,4 +1,6 @@
 import hashlib
+import string
+import random
 
 from BLF import BloomFilter
 from GeneralMethods import calc_two_parity_bits, calc_single_parity_bits
@@ -24,6 +26,7 @@ class BfLutClass:
         self.print_tables = False
         self.print_HT = False
         self.check_absent_words = False
+        self.generate_random_words = True
 
 
         # bf_initiation_siz : Number of items expected to be stored in bloom filter
@@ -64,20 +67,27 @@ class BfLutClass:
 
         self.resultDict.__init__()
 
-
-
+    def generate_random_key(self,length):
+        return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
 
         # end of init
 
     def generateWords(self):
-        f = open("keyFile.txt", "r")
+        if self.generate_random_words is not True:
+            f = open("keyFile.txt", "r")
+            for x in range(self.n_items_to_generate):
+                word = f.readline()
+                self.word_present.append(word)
+                word = f.readline()
+                self.word_absent.append(word)
+            return
         for x in range(self.n_items_to_generate):
-            word = f.readline()
-            # print("add to present = " + word)
+            word = self.generate_random_key(self.word_length)
             self.word_present.append(word)
-            word = f.readline()
-            # print("add to absent = " +  word)
+            word = self.generate_random_key(self.word_length)
             self.word_absent.append(word)
+        return
+
 
     def get_last_bits_of_sha3_hash(self, bits_val):
         hash_val_int = hashlib.sha3_256(bytearray(bits_val.encode()))
@@ -193,11 +203,12 @@ class BfLutClass:
                 pass
 
         absent_words_founded_in_bf = self.resultDict.__len__()
-        print("\nchecking existence of absent words ")
-        print("---------------------------------- ")
-        print("total Words Checked: {} ".format(self.word_absent.__len__()))
-        print("Found in HT: {}".format(ht_found_values))
-        print("Found in BF: {}".format(absent_words_founded_in_bf))
+        if absent_words_founded_in_bf is not 0:
+            print("\nchecking existence of absent words ")
+            print("---------------------------------- ")
+            print("total Words Checked: {} ".format(self.word_absent.__len__()))
+            print("Found in HT: {}".format(ht_found_values))
+            print("Found in BF: {}".format(absent_words_founded_in_bf))
 
         if absent_words_founded_in_bf > 0:
             print("Clearing Results ")
