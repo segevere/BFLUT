@@ -37,7 +37,7 @@ class HashTable(object):
             return False
 
     def _resize(self):
-        print("resize!!!")
+        #print("resize!!!")
         old_container = self.container
         old_size = self.size
         self.container_size = int(old_size // self.MIN_FACTOR)
