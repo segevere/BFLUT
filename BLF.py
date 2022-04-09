@@ -5,7 +5,7 @@ import mmh3 as mmh3
 from bitarray import bitarray
 
 class BloomFilter(object):
-    def __init__(self, items_count, fp_prob, size_as_items_count=True):
+    def __init__(self, items_count, fp_prob, static_allocation=True, init_hash_count = 1, bf_fixed_size=640):
         '''
         items_count : int
             Number of items expected to be stored in bloom filter
@@ -13,9 +13,9 @@ class BloomFilter(object):
             False Positive probability in decimal
         '''
         self.fp_prob = fp_prob
-        if size_as_items_count is True:
-            self.size = items_count
-            self.hash_count = 1
+        if static_allocation is True:
+            self.size = bf_fixed_size
+            self.hash_count = init_hash_count
         else:
             self.size = self.get_size(items_count, fp_prob)
             self.hash_count = self.get_hash_count(self.size, items_count)

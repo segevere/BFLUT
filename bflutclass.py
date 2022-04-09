@@ -6,48 +6,59 @@ from BLF import BloomFilter
 from GeneralMethods import calc_two_parity_bits, calc_single_parity_bits
 from hashtable import HashTable
 
+debug_multi_buf = False
+
 
 class BfLutClass:
-    def __init__(self):
-        self.random_address_list = dict()
-        self.randomize_addresses = True
-        self.length_counters = dict()
+    def __init__(self,num_of_items=16,fp_prob=10,static_allocation=False,num_of_hashes_in_static_allocation=1,bf_fixed_size=640):
+#init values
+        self.n_items_to_generate    = num_of_items
+        self.fp_prob = fp_prob  # Fault Positive 0.382 leads to 320 bitarray size
+        self.static_allocation = static_allocation
+        self.bf_fixed_size = bf_fixed_size
+
+        self.random_address_list    = dict()
+        self.randomize_addresses    = True
+        self.length_counters        = dict()
         self.print_bloom_factor_results = False
-        self.length_of_recursion = None
-        self.do_error_detection = False
-        self.err_correction_bits = 1
+        self.length_of_recursion    = None
+        self.do_error_detection     = False
+        self.err_correction_bits    = 1
         self.dual_parity_bits_error_detection = False  # add 2 bits of parity for every 5 bits
         self.single_parity_bits_error_detection = False  # add single bit of parity for every 5 bits
         self.word_length = 32
-        self.bfluf_k_items_to_init_tables = 16  # number of items to be added
-        self.n_items_to_generate = 16  # number of items to be added
 
         self.bfluf_m_address_bits: int = 10  # number of bits (address) Assume an address requires m bits
-        self.fp_prob = 0.382  # Fault Positive 0.382 leads to 320 bitarray size
-        self.ht_initial_size = self.bfluf_k_items_to_init_tables * 2
+
+        self.ht_initial_size = self.n_items_to_generate * 2
         self.print_tables = False
         self.print_HT = False
         self.check_absent_words = False
         self.generate_random_words = True
 
         # bf_initiation_siz : Number of items expected to be stored in bloom filter
-        self.bf_initiation_size = self.bfluf_k_items_to_init_tables * self.bfluf_m_address_bits * 2
-        self.bf_initiation_size = 640
+        self.bf_initiation_size = self.n_items_to_generate * self.bfluf_m_address_bits
+
         # fp_prob : False Positive probability in decimal
         # Fault Positive 0.382 leads to 320 bitarray size and single hash operation
-        self.fp_prob = 0.382
-        self.ht_initial_size = self.bfluf_k_items_to_init_tables * 2
+
+        self.ht_initial_size = self.n_items_to_generate * 2
         self.print_tables = False
         self.print_HT = False
-        self.check_absent_words = True
         self.word_present = list()
         self.word_absent = list()
 
-        self.bloomf = BloomFilter(self.bf_initiation_size, self.fp_prob)
+        self.bloomf = BloomFilter(self.bf_initiation_size,
+                                  self.fp_prob,static_allocation,
+                                  num_of_hashes_in_static_allocation,
+                                  bf_fixed_size = self.bf_fixed_size)
         self.hashTable = HashTable(self.ht_initial_size)
         self.generateWords()
         self.resultDict = set()
         self.list_of_blooms = list()
+        self.mbfResultDict = set()
+
+        self.blf_hash_count = num_of_hashes_in_static_allocation
 
     def init(self):
         if self.do_error_detection is True:
@@ -59,7 +70,10 @@ class BfLutClass:
         else:
             self.length_of_recursion = self.bfluf_m_address_bits + 1
 
-        self.bloomf.__init__(self.bf_initiation_size, self.fp_prob)
+        self.bloomf.__init__(self.bf_initiation_size, self.fp_prob,
+                             init_hash_count = self.blf_hash_count,
+                             static_allocation= self.static_allocation,
+                             bf_fixed_size = self.bf_fixed_size)
         self.hashTable.__init__(self.ht_initial_size)
 
         self.word_present = list()
@@ -69,13 +83,18 @@ class BfLutClass:
         # generating words lists
 
         self.resultDict.__init__()
+        self.mbfResultDict.__init__()
 
         for i in range(self.length_of_recursion):
             self.length_counters[i] = 0
 
         self.list_of_blooms.clear()
         for i in range(0, self.bfluf_m_address_bits):
-            self.list_of_blooms.append(BloomFilter(64, self.fp_prob))
+            self.list_of_blooms.append(BloomFilter(self.n_items_to_generate,
+                                                   self.fp_prob,
+                                                   init_hash_count=self.blf_hash_count,
+                                                   static_allocation=self.static_allocation,
+                                                   bf_fixed_size = int(self.bf_fixed_size/10)))
 
     def generate_random_key(self, length):
         return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
@@ -205,20 +224,19 @@ class BfLutClass:
             self.resultDict.add(word)
 
     # searching for word by adding bit after bit
-    def checkIfInBloom(self, word, i):
-        if i == self.length_of_recursion:
-            # print("found in bloom filter" + word)
+    def check_if_a_word_is_in_bf_recursive(self, word, depth):
+        if depth == self.length_of_recursion:
             self.breakWordandAddtoResultList(word)
             return
 
         ask_bloom_plus_0 = word + "0"
         ask_bloom_plus_1 = word + "1"
         if self.bloomf.check(ask_bloom_plus_0):
-            self.length_counters[i - 1] = self.length_counters[i - 1] + 1
-            self.checkIfInBloom(ask_bloom_plus_0, i + 1)
+            self.length_counters[depth - 1] = self.length_counters[depth - 1] + 1
+            self.check_if_a_word_is_in_bf_recursive(ask_bloom_plus_0, depth + 1)
         if self.bloomf.check(ask_bloom_plus_1):
-            self.length_counters[i - 1] = self.length_counters[i - 1] + 1
-            self.checkIfInBloom(ask_bloom_plus_1, i + 1)
+            self.length_counters[depth - 1] = self.length_counters[depth - 1] + 1
+            self.check_if_a_word_is_in_bf_recursive(ask_bloom_plus_1, depth + 1)
 
     def check_absent(self):
         if self.check_absent_words is False:
@@ -226,7 +244,7 @@ class BfLutClass:
         ht_found_values: int = 0
         for word in self.word_absent:
             #           print("checking absent if exist in Bloom " + word)
-            self.checkIfInBloom(word, 1)
+            self.check_if_a_word_is_in_bf_recursive(word, 1)
             try:
                 value_found = self.hashTable.get(word)
                 ht_found_values += 1
@@ -286,7 +304,7 @@ class BfLutClass:
         print("Global Vars ")
         print("------------")
         print("Word Length  {} ".format(self.word_length))
-        print("Number of Items to Init table  {} ".format(self.bfluf_k_items_to_init_tables))
+        print("Number of Items to Init table  {} ".format(self.n_items_to_generate))
         print("Number of Items generated  {} ".format(self.n_items_to_generate))
         print("size of address in bits  {} ".format(self.bfluf_m_address_bits))
 
@@ -298,19 +316,20 @@ class BfLutClass:
         """
         res_dict = dict()
 
-        res_dict["Word Length"] = self.word_length
-        res_dict["Items Num"] = self.bfluf_k_items_to_init_tables
-        res_dict["Bits Num"] = self.bfluf_m_address_bits
-        res_dict["fp_prob"] = self.fp_prob
+#       res_dict["Word Length"] = self.word_length
+        res_dict["Items Num"] = self.n_items_to_generate
+#       res_dict["Bits Num"] = self.bfluf_m_address_bits
+        if self.static_allocation is False:
+            res_dict["fp_prob"] = self.fp_prob
 
         self.fillHashandBloom()
-
-        res_dict["Absents Found"] = self.check_absent()  # inspect
+        if self.check_absent_words is True:
+            res_dict["Absents Found"] = self.check_absent()  # inspect
 
         ht_found_values = 0
         self.resultDict.clear()
         for word in self.word_present:
-            self.checkIfInBloom(word, 1)  # if in bloom updates resultDict
+            self.check_if_a_word_is_in_bf_recursive(word, 1)  # if in bloom updates resultDict
             self.check_if_in_multi_instance_bloom(word)
             try:
                 value_found = self.hashTable.get(word)
@@ -323,12 +342,20 @@ class BfLutClass:
             print("address of size {} ".format(i) + "{}".format(counter_of_length))
 
         res_dict["found in BF"] = self.resultDict.__len__()
-        res_dict["total words checked"] = self.word_present.__len__()
+        #res_dict["total words checked"] = self.word_present.__len__()
         res_dict["Found in HT"] = ht_found_values
-        res_dict["BF bl_initiation_size"] = self.bf_initiation_size
+
+        if self.static_allocation is False:
+            res_dict["BF bl_initiation_size"] = self.bf_initiation_size
         res_dict["BF bit array size "] = self.bloomf.size
         res_dict["BF Load Factor "] = self.bloomf.get_load_factor()
         res_dict["BF hash_count"] = self.bloomf.hash_count
+
+        res_dict["found in multi BF"] = self.mbfResultDict.__len__()
+        res_dict["multi BF av load factor"] = self.get_mbf_av_load_factor()
+        res_dict["multi BF bit array size"] = self.list_of_blooms[0].size
+        res_dict["multi BF extra found ratio"] = self.mbfResultDict.__len__() / self.n_items_to_generate
+        res_dict["multi BF hash count"] = self.list_of_blooms[0].hash_count
 
         self.PrintBloomFilterResult(ht_found_values)
 
@@ -367,7 +394,7 @@ class BfLutClass:
         print("Add to Bloom " + key + bin_val)
 
     def check_if_in_multi_instance_bloom(self, key):
-        print("checking " + key)
+    #   print("checking " + key)
         key_val = key
         index = 0
         result_buf = dict()
@@ -376,43 +403,65 @@ class BfLutClass:
         last_checks = 0
         while index <= self.bfluf_m_address_bits:
             last_checks = -1
+            if debug_multi_buf is True:
+                print(" interation on index {}".format(index) + " checking val  " + key_val)
             if index < self.bfluf_m_address_bits:
                 ask_bloom_plus_0 = key_val + "0"
                 ask_bloom_plus_1 = key_val + "1"
                 is_plus_1 = self.list_of_blooms[index].check(ask_bloom_plus_1)
                 is_plus_0 = self.list_of_blooms[index].check(ask_bloom_plus_0)
-                last_checks=result_buf[index]= int(is_plus_1)+int(is_plus_0)
+                result_buf[index] = int(is_plus_1) + int(is_plus_0)
+                last_checks = result_buf[index]
+
             if last_checks == 0 or index == self.bfluf_m_address_bits:
-                #print("checking - no progress " + key_val + " res buf: " )
-                #print(result_buf)
-                #nothinng found , trace back to last index in result_buf which is not 0
+                if debug_multi_buf is True:
+                    print("last_checks {}".format(last_checks) + " current key val = " + key_val + " index = {}".format(
+                        index))
+                # print(result_buf)
+                # nothinng found , trace back to last index in result_buf which is not 0
 
                 i = index
-                if i== self.bfluf_m_address_bits:
-                    i = i-1
-                index =  -10 #value for nothing found
+                if i == self.bfluf_m_address_bits:
+                    i = i - 1
+                index = -10  # value for nothing found
                 while i >= 0:
                     if result_buf[i] == 1:
+                        if debug_multi_buf is True:
+                            print("Break in index  .{}".format(i) + " key_val = " + key_val + " index = {}".format(i))
                         index = i
                         break
-                    key_val = key_val[0: -1] # remove last char
+                    key_val = key_val[0: -1]  # remove last char
                     i -= 1
+                    if debug_multi_buf is True:
+                        print("Current Key Values " + key_val + " index = {}".format(i))
+
+                # end of while if the index is -10 no '1' found in result_buf
                 if index == -10:
-                    print("nothing was found " + key_val)
+                    if debug_multi_buf is True:
+                        print("nothing was found " + key_val + " index {}".format(index))
+                        print(result_buf)
                     return False
-                is_plus_0 = False #because 0 was already checked
+                is_plus_0 = False  # because 0 was already checked
                 is_plus_1 = True  # because we need to progress with 1 now
 
-                ask_bloom_plus_1 = key_val + "1" #now we need to check 1
+                ask_bloom_plus_1 = key_val + "1"  # now we need to check 1
+
+                if debug_multi_buf is True:
+                    print("Need to check plus 1 " + ask_bloom_plus_1 + " index = {}".format(index))
 
             if is_plus_0 is True:
                 result_buf[index] = result_buf[index] - 1
                 key_val = ask_bloom_plus_0
                 index += 1
                 if index == self.bfluf_m_address_bits:
-                    print("Found " + key_val)
-                    if result_buf[index-1]==1:
-                        index=index-1
+                    print("Found end 0 - " + key_val + " index {}".format(index))
+                    self.mbfResultDict.add(key_val)
+                    if debug_multi_buf is True:
+                        print(result_buf)
+                    if result_buf[index - 1] == 1:
+                        #                        key_val = key_val[0: -1]  # remove last char
+                        index = index - 1
+                    key_val = key_val[0: -1]  # remove last char
                 else:
                     continue
             if is_plus_1 is True:
@@ -421,10 +470,32 @@ class BfLutClass:
                 index += 1
                 if index == self.bfluf_m_address_bits:
                     # found key
-                    print("Found " + key_val)
+                    print("Found  end 1 - " + key_val + " index {}".format(index))
+                    self.mbfResultDict.add(key_val)
+                    if debug_multi_buf is True:
+                        print(result_buf)
+                    key_val = key_val[0: -1]  # remove last char
+
+
                 else:
                     continue
 
+        # reaching here only if the index got to max
+
+    def get_mbf_av_load_factor(self):
+        agg_LF: float = 0
+        for i in range(0, self.bfluf_m_address_bits):
+            agg_LF += self.list_of_blooms[i].get_load_factor()
+
+        return agg_LF / self.bfluf_m_address_bits
+
+    def get_mbf_av_extra_found(self):
+        agg_LF: float = 0
+        for i in range(0, self.bfluf_m_address_bits):
+            agg_LF += self.list_of_blooms[i].get_load_factor()
+
+        return agg_LF / self.bfluf_m_address_bits
+
+        pass
 
 
-        #reaching here only if the index got to max
